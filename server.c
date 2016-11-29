@@ -10,6 +10,8 @@
 #include "status.h"
 
 #define SIZE_OF_BUFFER 128
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 typedef struct DNS_DATA
 {
 	int ip[4];
@@ -58,7 +60,7 @@ int main(void)
 void *handle_request(void *socketfd)
 {
 	int sock = *(int*)socketfd;
-	int i = 0,j = 0;
+	int i = 0,j = 0,search_id;
 	int flag =0;
 	size_t size_req,size_resp;
 	char request[SIZE_OF_BUFFER];
@@ -66,10 +68,7 @@ void *handle_request(void *socketfd)
 	char cmd[5];
 	char domain[100];
 	char ip[20];
-
-
-
-	while((read_size = recv(sock , request , SIZE_OF_BUFFER , 0)) >= 0)
+	while((re  ad_size = recv(sock , request , SIZE_OF_BUFFER , 0)) >= 0)
 	{
 		request[read_size] = '\0';
 		while(request[i] != '\0')
@@ -94,8 +93,11 @@ void *handle_request(void *socketfd)
 				ip[j++] = request[i++];
 				ip[j] = '\0';
 			}
-
 		}
+
+		//set mutex lock
+		pthread_mutex_lock(&mutex);
+
 		if(strcmp(cmd,"SET") == 1)
 		{
 			
@@ -107,42 +109,83 @@ void *handle_request(void *socketfd)
 				for(i = 0;i<4;i++)
 					dns_data[index].ip[i] = ip_int[i];
 				strcpy(dns_data[index].domain,domain);
-
 			}
 			else
 			{
 				//bad request
+				sprintf(response,"%d \"%s\"",status_code[BAD_REQUEST],status_str[BAD_REQUEST]);
+				if(write(sock,&size_resp,sizeof(size_t)) == -1)
+					return -1;
+				if(write(sock,response,size_resp) == -1)
+					return -1;
 			}
-
-
-
 		}
 		else if(strcmp(cmd,"GET") == 1)
 		{
 			if(check_domain_invalid(domain) == 0 && ip == NULL)
 			{
-				search_ip(domain);//process the response string
+				search_id = search_ip(domain);//process the response string
+				if(search_id != -1)
+				{
+					//transmit response
+					size_resp = sprintf(response,"%d \"%s\" %d.%d.%d.%d",status_code[OK],status_str[OK],
+														dns_data[search_id].ip[0],dns_data[search_id].ip[1],
+														dns_data[search_id].ip[2],dns_data[search_id].ip[3]);
+					if(write(sock,&size_resp,sizeof(size_t)) == -1)
+						return -1;
+					if(write(sock,response,size_resp) == -1)
+						return -1;
+				}
+				else
+				{
+					//404 NOT FOUND
+					size_resp = sprintf(response,"%d \"%s\""status_code[NOT_FOUND],status_str[NOT_FOUND]);
+					if(write(sock,&size_resp,sizeof(size_t)) == -1)
+						return -1;
+					if(write(sock,response,size_resp) == -1)
+						return -1;
+				}
 			}
 			else
 			{
 				//bad request
+				sprintf(response,"%d \"%s\"",status_code[BAD_REQUEST],status_str[BAD_REQUEST]);
+				if(write(sock,&size_resp,sizeof(size_t)) == -1)
+					return -1;
+				if(write(sock,response,size_resp) == -1)
+					return -1;
 			}			
 		}
-		if(strcmp(cmd,"INFO") == 1)
+		else if(strcmp(cmd,"INFO") == 1)
 		{
 			if(domain == NULL && ip == NULL)
 			{
-				strcpy(response,atoi(status_code[OK]));
-				strcat(response,status_str[OK]);
-				strcat(response,atoi(index));
+				size_resp = sprintf(response,"%d \"%s\" %d",status_code[OK],status_str[OK],index);
 				write(sock,&size_resp,sizeof(size_t));
 				write(sock,response,size_resp)//send the index num to client
+
 			}
 			else
 			{
 				//bad request
+				sprintf(response,"%d \"%s\"",status_code[BAD_REQUEST],status_str[BAD_REQUEST]);
+				if(write(sock,&size_resp,sizeof(size_t)) == -1)
+					return -1;
+				if(write(sock,response,size_resp) == -1)
+					return -1;
 			}			
 		}
+		else
+		{
+			//method not allowed
+			sprintf(response,"%d \"%s\"",status_code[METHOD_NOT_ALLOWED],status_str[METHOD_NOT_ALLOWED]);
+			if(write(sock,&size_resp,sizeof(size_t)) == -1)
+				return -1;
+			if(write(sock,response,size_resp) == -1)
+				return -1;
+		}
+		//mutex unlock
+		pthread_mutex_unlock(&mutex);
 	}
 }
 //check the ip format if it is valid
@@ -150,7 +193,7 @@ int check_ip_invalid(char *ip)
 {
 	int ip_int[4];
 	int i;
-	sprintf(ip,"%d.%d.%d.%d",ip_int[0],ip_int[1],ip_int[2],ip_int[3]);
+	sscanf(ip,"%d.%d.%d.%d",ip_int[0],ip_int[1],ip_int[2],ip_int[3]);
 	for(i=0;i<4;i++)
 		if(ip_int[i] > 255 || ip_int[i] < 0)
 			return 1;
@@ -182,5 +225,5 @@ int search_ip(char *domain)
 		if(strcmp(domain,dns_data[i].domain) == 1)
 			return i;
 	}
-	return 0;
+	return -1;
 }
