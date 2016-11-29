@@ -12,7 +12,7 @@
 #define SIZE_OF_BUFFER 128
 typedef struct DNS_DATA
 {
-	char ip[16];
+	int ip[4];
 	char domain[100];
 };
 DNS_DATA dns_data[1000];
@@ -101,7 +101,13 @@ void *handle_request(void *socketfd)
 			
 			if(check_domain_invalid(domain) == 0 && check_ip_invalid(ip) == 0)
 			{
-				//process the response string
+				int ip_int[4];
+				int i;
+				sprintf(ip,"%d.%d.%d.%d",ip_int[0],ip_int[1],ip_int[2],ip_int[3]);//process the response string
+				for(i = 0;i<4;i++)
+					dns_data[index].ip[i] = ip_int[i];
+				strcpy(dns_data[index].domain,domain);
+
 			}
 			else
 			{
@@ -113,9 +119,9 @@ void *handle_request(void *socketfd)
 		}
 		else if(strcmp(cmd,"GET") == 1)
 		{
-			if(check_domain_invalid(domain) == 0 && check_ip_invalid(ip) == 0)
+			if(check_domain_invalid(domain) == 0 && ip == NULL)
 			{
-				//process the response string
+				search_ip(domain);//process the response string
 			}
 			else
 			{
@@ -124,9 +130,13 @@ void *handle_request(void *socketfd)
 		}
 		if(strcmp(cmd,"INFO") == 1)
 		{
-			if(check_domain_invalid(domain) == 0 && check_ip_invalid(ip) == 0)
+			if(domain == NULL && ip == NULL)
 			{
-				//process the response string
+				strcpy(response,atoi(status_code[OK]));
+				strcat(response,status_str[OK]);
+				strcat(response,atoi(index));
+				write(sock,&size_resp,sizeof(size_t));
+				write(sock,response,size_resp)//send the index num to client
 			}
 			else
 			{
@@ -138,19 +148,13 @@ void *handle_request(void *socketfd)
 //check the ip format if it is valid
 int check_ip_invalid(char *ip)
 {
-	int length = strlen(ip);
+	int ip_int[4];
 	int i;
-	int count = 0;
-	for(i = 0;i<length;i++)
-	{
-		if(ip[i] == '.')
-			count++;
-	}
-	if(count == 4)
-		return 0;
-	else
-		return 1;
-
+	sprintf(ip,"%d.%d.%d.%d",ip_int[0],ip_int[1],ip_int[2],ip_int[3]);
+	for(i=0;i<4;i++)
+		if(ip_int[i] > 255 || ip_int[i] < 0)
+			return 1;
+	return 0;
 
 }
 //check the domain name if it is valid
@@ -171,7 +175,7 @@ int check_domain_invalid(char *domain)
 }
 //search the corresponding IP through the domain name
 int search_ip(char *domain)
-{
+ {
 	int i;
 	for(i = 0; i<index;i++)
 	{
