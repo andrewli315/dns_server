@@ -18,6 +18,10 @@ typedef struct DNS_DATA
 DNS_DATA dns_data[1000];
 static int index;
 void *handle_request(void *socketfd);
+int search_domain(char* ip);
+int search_ip(char *domain);
+int check_ip_invalid(char *ip);
+int check_domain_invalid(char *domain);
 int main(void)
 {
 	int socketfd, clientfd, portno,addrlen;	
@@ -61,10 +65,11 @@ void *handle_request(void *socketfd)
 	char *response = (char*)malloc(SIZE_OF_BUFFER);
 	char cmd[5];
 	char domain[100];
-	char ip[16];
+	char ip[20];
 
 
-	while((read_size = recv(sock , request , SIZE_OF_BUFFER , 0)) < 0)
+
+	while((read_size = recv(sock , request , SIZE_OF_BUFFER , 0)) >= 0)
 	{
 		request[read_size] = '\0';
 		while(request[i] != '\0')
@@ -93,19 +98,85 @@ void *handle_request(void *socketfd)
 		}
 		if(strcmp(cmd,"SET") == 1)
 		{
+			
+			if(check_domain_invalid(domain) == 0 && check_ip_invalid(ip) == 0)
+			{
+				//process the response string
+			}
+			else
+			{
+				//bad request
+			}
+
+
 
 		}
 		else if(strcmp(cmd,"GET") == 1)
 		{
-			
+			if(check_domain_invalid(domain) == 0 && check_ip_invalid(ip) == 0)
+			{
+				//process the response string
+			}
+			else
+			{
+				//bad request
+			}			
 		}
 		if(strcmp(cmd,"INFO") == 1)
 		{
-			
+			if(check_domain_invalid(domain) == 0 && check_ip_invalid(ip) == 0)
+			{
+				//process the response string
+			}
+			else
+			{
+				//bad request
+			}			
 		}
-
 	}
+}
+//check the ip format if it is valid
+int check_ip_invalid(char *ip)
+{
+	int length = strlen(ip);
+	int i;
+	int count = 0;
+	for(i = 0;i<length;i++)
+	{
+		if(ip[i] == '.')
+			count++;
+	}
+	if(count == 4)
+		return 0;
+	else
+		return 1;
 
 
-
+}
+//check the domain name if it is valid
+int check_domain_invalid(char *domain)
+{
+	int length = strlen(domain);
+	int i;
+	int count;
+	for(i = 0;i<length;i++)
+	{
+		if(domain[i] == '.')
+			count++;
+	}
+	if(count >= 1)
+		return 0;
+	else
+		return 1;
+}
+//search the corresponding IP through the domain name
+int search_ip(char *domain)
+{
+	int i;
+	for(i = 0; i<index;i++)
+	{
+		if(strcmp(domain,dns_data[i].domain) == 1)
+			return i;
+	}
+	return 0;
 }
