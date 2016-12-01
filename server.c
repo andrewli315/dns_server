@@ -2,6 +2,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -27,19 +29,26 @@ int check_domain_invalid(char *domain);
 int main(void)
 {
 	int socketfd, clientfd,addrlen;	
-	int portno = 1000;
+	int portno = 12345;
 	int ret;
 	int *new_sock;
 	struct sockaddr_in serv_addr, client_addr;
 	
-	//memset((char*)&serv_addr,0,sizeof(serv_addr));
+	memset((char*)&serv_addr,0,sizeof(serv_addr));
+	socketfd = socket(AF_INET,SOCK_STREAM,0);
+	if(socketfd < 0)
+	{
+		printf("ERROR in create new socket\n");
+		return 1;
+	}
 	
 	serv_addr.sin_family = AF_INET;
 	serv_addr.sin_addr.s_addr = INADDR_ANY;
 	serv_addr.sin_port = htons(portno);
+	
 	if(bind(socketfd,(struct sockaddr*)&serv_addr,sizeof(serv_addr)) < 0)
 	{
-		error("ERROR on binding\n");
+		printf("ERROR on binding\n");
 		return 1;
 	}
 	printf("breakpoint\n");
