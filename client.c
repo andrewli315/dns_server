@@ -226,7 +226,6 @@ int main(int argc, char *argv[])
         sfd = connect_server(server, port);
         
         handle_connect(sfd, run, random);
-        sleep(1);
         close(sfd);
         exit(EXIT_SUCCESS);
 }

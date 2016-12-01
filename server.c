@@ -16,11 +16,12 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct DATA
 {
-	int ip[4];
+	char ip[20];
 	char domain[100];
 }DNS_DATA;
 DNS_DATA dns_data[1000];
 static int data_index;
+int thread_cnt=0;
 void *handle_request(void *socketfd);
 int search_domain(char* ip);
 int search_ip(char *domain);
@@ -31,7 +32,7 @@ int main(void)
 	int socketfd, clientfd,addrlen;	
 	int portno = 12345;
 	int ret;
-	int *new_sock;
+	int *new_sock = malloc(sizeof(int));
 	struct sockaddr_in serv_addr, client_addr;
 	
 	memset((char*)&serv_addr,0,sizeof(serv_addr));
@@ -51,22 +52,36 @@ int main(void)
 		printf("ERROR on binding\n");
 		return 1;
 	}
-	printf("breakpoint\n");
 	//listen the client
 	listen(socketfd,5);
-	while(1)
-	{
-		addrlen = sizeof(client_addr);
-		pthread_t new_thread;
+	addrlen = sizeof(client_addr);
+	while((clientfd = accept(socketfd, (struct sockaddr*)&client_addr, (socklen_t*)&addrlen)))
+	{	
+
+		
+		pthread_t new_thread[10];
 		/* Wait and Accept connection */
-		clientfd = accept(socketfd, (struct sockaddr*)&client_addr, &addrlen);
-		new_sock = &clientfd;
+		
+		*new_sock = clientfd;
 		printf("connect successfully\n");
-		ret = pthread_create(&new_thread,NULL,handle_request,(void*)new_sock);
-		//handle_request(new_sock);
+		if(thread_cnt<=9)
+		{
+			ret = pthread_create(&new_thread[thread_cnt],NULL,handle_request,(void*)new_sock);
+			thread_cnt++;
+		}
 
-
+		if(ret < 0)
+		{
+			printf("pthread create error\n");
+			return 1;
+		}
+		if(clientfd < 0)
+		{
+			printf("client connect failed\n");
+			return 1;
+		}
 	}
+	printf("halt\n");
 	return 0;
 }
 void *handle_request(void *socketfd)
@@ -74,8 +89,8 @@ void *handle_request(void *socketfd)
 	int sock = *(int*)socketfd;
 	int i = 0,j = 0,search_id;
 	int flag =0;
-	int read_size;
-	size_t *size_req,size_resp;
+	int read_size,size_resp;
+	size_t size_req;
 	char request[SIZE_OF_BUFFER];
 	char response[SIZE_OF_BUFFER]; 
 	char cmd[5];
@@ -87,149 +102,106 @@ void *handle_request(void *socketfd)
 	printf("handle_request\n");
 	while(1)
 	{
+		memset(request,'\0',sizeof(request));
 		read(sock , &size_req , sizeof(size_t));
 		read(sock , request , size_req);
 		read_size = strlen(request);
 
 		request[read_size] = '\0';
+		memset(cmd,'\0',sizeof(cmd));
+		memset(domain,'\0',sizeof(domain));
+		memset(ip,'\0',sizeof(ip));
 		printf("%s\n", request);
-		while(request[i] != '\0')
-		{
-			if(request[i] == ' ')
-			{
-				flag++;
-				j=0;
-				i++;
-			}
-			else if(flag == 0 && request[i] != ' ')
-			{
-				cmd[j++] = request[i++];
-				cmd[j] = '\0';
-			}
-			else if(flag == 1 && request[i] != ' ')
-			{
-				domain[j++] = request[i++];
-				domain[j] = '\0';
-			}
-			else if(flag == 2 && request[i] != ' ')
-			{
-				ip[j++] = request[i++];
-				ip[j] = '\0';
-			}
-			else
-				i++;
-		}
-		printf("cmd: %s ip:%s domain:%s\n", cmd,ip,domain);
+		sscanf(request,"%s %s %s",cmd,domain,ip);
+		//printf("cmd: %s ip:%s domain:%s\n", cmd,ip,domain);
 		//set mutex lock
-		//pthread_mutex_lock(&mutex);
-		printf("breakpoint:before judge\n");
+		pthread_mutex_lock(&mutex);
 		if(strcmp(cmd,"SET") == 0)
 		{
 			
 			if(check_domain_invalid(domain) == 0 && check_ip_invalid(ip) == 0)
 			{
-				printf("breakpoint:SET\n");
-				int ip_int[4];
-				int i;
-				sprintf(ip,"%d.%d.%d.%d",ip_int[0],ip_int[1],ip_int[2],ip_int[3]);//process the response string
-				for(i = 0;i<4;i++)
-					dns_data[data_index].ip[i] = ip_int[i];
 				strcpy(dns_data[data_index].domain,domain);
+				strcpy(dns_data[data_index].ip,ip);
 				data_index++;
+				size_resp = sprintf(response,"%d \"%s\"",status_code[OK],status_str[OK]);
 			}
 			else
 			{
 				//bad request
-				printf("breakpoint:set BAD_REQUEST\n");
-				sprintf(response,"%d \"%s\"",status_code[BAD_REQUEST],status_str[BAD_REQUEST]);
-				if(write(sock,&size_resp,sizeof(size_t)) == -1)
-					break;
-				if(write(sock,response,size_resp) == -1)
-					break;
+				size_resp = sprintf(response,"%d \"%s\"",status_code[BAD_REQUEST],status_str[BAD_REQUEST]);
+				
 			}
 		}
 		else if(strcmp(cmd,"GET") == 0)
 		{
-			if(check_domain_invalid(domain) == 0 && ip == NULL)
+			if(check_domain_invalid(domain) == 0)
 			{
-				printf("breakpoint:search\n");
 				search_id = search_ip(domain);//process the response string
 				if(search_id != -1)
 				{
 					//transmit response
-					size_resp = sprintf(response,"%d \"%s\" %d.%d.%d.%d",status_code[OK],status_str[OK],
-														dns_data[search_id].ip[0],dns_data[search_id].ip[1],
-														dns_data[search_id].ip[2],dns_data[search_id].ip[3]);
-					if(write(sock,&size_resp,sizeof(size_t)) == -1)
-						break;
-					if(write(sock,response,size_resp) == -1)
-						break;
+					size_resp = sprintf(response,"%d \"%s\" %s",status_code[OK],status_str[OK],
+														dns_data[search_id].ip);
+					
 				}
 				else
 				{
 					//404 NOT FOUND
-					printf("breakpoint:404 NOT_FOUND\n");
 					size_resp = sprintf(response,"%d \"%s\"",status_code[NOT_FOUND],status_str[NOT_FOUND]);
-					if(write(sock,&size_resp,sizeof(size_t)) == -1)
-						break;
-					if(write(sock,response,size_resp) == -1)
-						break;
+					
 				}
 			}
 			else
 			{
 				//bad request
-				printf("breakpoint:BAD_REQUEST\n");
-				sprintf(response,"%d \"%s\"",status_code[BAD_REQUEST],status_str[BAD_REQUEST]);
-				if(write(sock,&size_resp,sizeof(size_t)) == -1)
-					break;
-				if(write(sock,response,size_resp) == -1)
-					break;
+				size_resp = sprintf(response,"%d \"%s\"",status_code[BAD_REQUEST],status_str[BAD_REQUEST]);
+				
 			}			
 		}
 		else if(strcmp(cmd,"INFO") == 0)
 		{
-			if(domain == NULL && ip == NULL)
-			{
-				//send the index num to client
-				size_resp = sprintf(response,"%d \"%s\" %d",status_code[OK],status_str[OK],index);
-				write(sock,&size_resp,sizeof(size_t));
-				write(sock,response,size_resp);
-
-			}
-			else
-			{
-				//bad request
-				sprintf(response,"%d \"%s\"",status_code[BAD_REQUEST],status_str[BAD_REQUEST]);
-				if(write(sock,&size_resp,sizeof(size_t)) == -1)
-					break;
-				if(write(sock,response,size_resp) == -1)
-					break;
-			}			
+			size_resp = sprintf(response,"200 \"OK\" %d",data_index);		
+		}
+		else if(strcmp(cmd,"\0") == 0 && strcmp(domain,"\0") == 0 && strcmp(ip,"\0") == 0)
+		{
+			pthread_mutex_unlock(&mutex);
+			break;
 		}
 		else
 		{
 			//method not allowed
-			sprintf(response,"%d \"%s\"",status_code[METHOD_NOT_ALLOWED],status_str[METHOD_NOT_ALLOWED]);
-			if(write(sock,&size_resp,sizeof(size_t)) == -1)
-				break;
-			if(write(sock,response,size_resp) == -1)
-				break;
+			size_resp  = sprintf(response,"%d \"%s\"",status_code[METHOD_NOT_ALLOWED],status_str[METHOD_NOT_ALLOWED]);
+			
 		}
+		pthread_mutex_unlock(&mutex);
+		printf("\n%d %s\n\n",size_resp,response);
+		if(write(sock,&size_resp,sizeof(size_t)) < 0)
+			break;
+		if(write(sock,response,size_resp) < 0)
+			break;
 		//mutex unlock
-		//pthread_mutex_unlock(&mutex);
+
+		
 	}
-	printf("breakpoint:end\n");
+	thread_cnt--;
+	pthread_exit((void*)socketfd);
+	return 0;
 }
 //check the ip format if it is valid
 int check_ip_invalid(char *ip)
 {
 	int ip_int[4];
 	int i;
-	sscanf(ip,"%d.%d.%d.%d",ip_int[0],ip_int[1],ip_int[2],ip_int[3]);
+	sscanf(ip,"%d.%d.%d.%d",&ip_int[0],&ip_int[1],&ip_int[2],&ip_int[3]);
 	for(i=0;i<4;i++)
+	{
 		if(ip_int[i] > 255 || ip_int[i] < 0)
+		{
+			printf("ip invalid\n");
 			return 1;
+		}
+	}
 	return 0;
 
 }
@@ -238,12 +210,13 @@ int check_domain_invalid(char *domain)
 {
 	int length = strlen(domain);
 	int i;
-	int count;
+	int count=0;
 	for(i = 0;i<length;i++)
 	{
 		if(domain[i] == '.')
 			count++;
 	}
+
 	if(count >= 1)
 		return 0;
 	else
