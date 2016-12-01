@@ -60,9 +60,10 @@ int main(void)
 		pthread_t new_thread;
 		/* Wait and Accept connection */
 		clientfd = accept(socketfd, (struct sockaddr*)&client_addr, &addrlen);
-		*new_sock = clientfd;
+		new_sock = &clientfd;
 		printf("connect successfully\n");
-		ret = pthread_create(&new_thread,NULL,handle_request,(void*)new_sock < 0);
+		ret = pthread_create(&new_thread,NULL,handle_request,(void*)new_sock);
+		//handle_request(new_sock);
 
 
 	}
@@ -74,21 +75,31 @@ void *handle_request(void *socketfd)
 	int i = 0,j = 0,search_id;
 	int flag =0;
 	int read_size;
-	size_t size_req,size_resp;
+	size_t *size_req,size_resp;
 	char request[SIZE_OF_BUFFER];
-	char *response = (char*)malloc(SIZE_OF_BUFFER);
+	char response[SIZE_OF_BUFFER]; 
 	char cmd[5];
 	char domain[100];
 	char ip[20];
-	while((read_size = recv(sock , request , SIZE_OF_BUFFER , 0)) >= 0)
+	memset(cmd,0,sizeof(cmd));
+	memset(domain,0,sizeof(domain));
+	memset(ip,0,sizeof(ip));
+	printf("handle_request\n");
+	while(1)
 	{
+		read(sock , &size_req , sizeof(size_t));
+		read(sock , request , size_req);
+		read_size = strlen(request);
+
 		request[read_size] = '\0';
+		printf("%s\n", request);
 		while(request[i] != '\0')
 		{
 			if(request[i] == ' ')
 			{
 				flag++;
 				j=0;
+				i++;
 			}
 			else if(flag == 0 && request[i] != ' ')
 			{
@@ -105,16 +116,19 @@ void *handle_request(void *socketfd)
 				ip[j++] = request[i++];
 				ip[j] = '\0';
 			}
+			else
+				i++;
 		}
-
+		printf("cmd: %s ip:%s domain:%s\n", cmd,ip,domain);
 		//set mutex lock
-		pthread_mutex_lock(&mutex);
-
-		if(strcmp(cmd,"SET") == 1)
+		//pthread_mutex_lock(&mutex);
+		printf("breakpoint:before judge\n");
+		if(strcmp(cmd,"SET") == 0)
 		{
 			
 			if(check_domain_invalid(domain) == 0 && check_ip_invalid(ip) == 0)
 			{
+				printf("breakpoint:SET\n");
 				int ip_int[4];
 				int i;
 				sprintf(ip,"%d.%d.%d.%d",ip_int[0],ip_int[1],ip_int[2],ip_int[3]);//process the response string
@@ -126,17 +140,19 @@ void *handle_request(void *socketfd)
 			else
 			{
 				//bad request
+				printf("breakpoint:set BAD_REQUEST\n");
 				sprintf(response,"%d \"%s\"",status_code[BAD_REQUEST],status_str[BAD_REQUEST]);
 				if(write(sock,&size_resp,sizeof(size_t)) == -1)
-					return (void*)-1;
+					break;
 				if(write(sock,response,size_resp) == -1)
-					return (void*)-1;
+					break;
 			}
 		}
-		else if(strcmp(cmd,"GET") == 1)
+		else if(strcmp(cmd,"GET") == 0)
 		{
 			if(check_domain_invalid(domain) == 0 && ip == NULL)
 			{
+				printf("breakpoint:search\n");
 				search_id = search_ip(domain);//process the response string
 				if(search_id != -1)
 				{
@@ -145,31 +161,33 @@ void *handle_request(void *socketfd)
 														dns_data[search_id].ip[0],dns_data[search_id].ip[1],
 														dns_data[search_id].ip[2],dns_data[search_id].ip[3]);
 					if(write(sock,&size_resp,sizeof(size_t)) == -1)
-						return (void*)-1;
+						break;
 					if(write(sock,response,size_resp) == -1)
-						return (void*)-1;
+						break;
 				}
 				else
 				{
 					//404 NOT FOUND
+					printf("breakpoint:404 NOT_FOUND\n");
 					size_resp = sprintf(response,"%d \"%s\"",status_code[NOT_FOUND],status_str[NOT_FOUND]);
 					if(write(sock,&size_resp,sizeof(size_t)) == -1)
-						return (void*)-1;
+						break;
 					if(write(sock,response,size_resp) == -1)
-						return (void*)-1;
+						break;
 				}
 			}
 			else
 			{
 				//bad request
+				printf("breakpoint:BAD_REQUEST\n");
 				sprintf(response,"%d \"%s\"",status_code[BAD_REQUEST],status_str[BAD_REQUEST]);
 				if(write(sock,&size_resp,sizeof(size_t)) == -1)
-					return (void*)-1;
+					break;
 				if(write(sock,response,size_resp) == -1)
-					return (void*)-1;
+					break;
 			}			
 		}
-		else if(strcmp(cmd,"INFO") == 1)
+		else if(strcmp(cmd,"INFO") == 0)
 		{
 			if(domain == NULL && ip == NULL)
 			{
@@ -184,9 +202,9 @@ void *handle_request(void *socketfd)
 				//bad request
 				sprintf(response,"%d \"%s\"",status_code[BAD_REQUEST],status_str[BAD_REQUEST]);
 				if(write(sock,&size_resp,sizeof(size_t)) == -1)
-					return (void*)-1;
+					break;
 				if(write(sock,response,size_resp) == -1)
-					return (void*)-1;
+					break;
 			}			
 		}
 		else
@@ -194,13 +212,14 @@ void *handle_request(void *socketfd)
 			//method not allowed
 			sprintf(response,"%d \"%s\"",status_code[METHOD_NOT_ALLOWED],status_str[METHOD_NOT_ALLOWED]);
 			if(write(sock,&size_resp,sizeof(size_t)) == -1)
-				return (void*)-1;
+				break;
 			if(write(sock,response,size_resp) == -1)
-				return (void*)-1;
+				break;
 		}
 		//mutex unlock
-		pthread_mutex_unlock(&mutex);
+		//pthread_mutex_unlock(&mutex);
 	}
+	printf("breakpoint:end\n");
 }
 //check the ip format if it is valid
 int check_ip_invalid(char *ip)
