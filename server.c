@@ -228,7 +228,7 @@ int search_ip(char *domain)
 	int i;
 	for(i = 0; i<data_index;i++)
 	{
-		if(strcmp(domain,dns_data[i].domain) == 1)
+		if(strcasecmp(domain,dns_data[i].domain) == 1)
 			return i;
 	}
 	return -1;
